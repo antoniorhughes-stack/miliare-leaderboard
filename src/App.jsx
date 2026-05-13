@@ -323,6 +323,7 @@ function BoardView({ users, entries, currentUser, isAdmin, onReport, onAdmin }) 
       if (!map[e.userId]) map[e.userId] = Object.fromEntries(STATS.map(s => [s.key, 0]));
       for (const s of STATS) map[e.userId][s.key] += e[s.key] || 0;
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps
     return map;
   }, [entries, period, currentPeriod]);
 
