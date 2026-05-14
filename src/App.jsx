@@ -412,6 +412,27 @@ function BoardView({ users, entries, currentUser, isAdmin, onReport, onAdmin }) 
           </div>
         </div>
       )}
+
+      {/* Team Totals */}
+      {rows.length > 0 && (() => {
+        const teamTotals = STATS.reduce((acc, s) => {
+          acc[s.key] = rows.reduce((sum, row) => sum + (row.totals[s.key] || 0), 0);
+          return acc;
+        }, {});
+        return (
+          <div style={{ ...css.mySummary, background: "#0f172a", border: "1px solid #1e293b" }}>
+            <div style={{ ...css.filterLabel, color: "#64748b" }}>Team {period} Totals {smdFilter !== "all" ? `· ${smdFilter}` : ""}</div>
+            <div style={css.summaryGrid}>
+              {STATS.map(s => (
+                <div key={s.key} style={{ ...css.summaryCell, background: "#1e293b", border: s.key === statKey ? "1.5px solid #4f6ef7" : "1.5px solid transparent" }}>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "#f1f5f9" }}>{(teamTotals[s.key] || 0).toLocaleString()}</div>
+                  <div style={{ fontSize: 10, color: "#64748b", marginTop: 3, lineHeight: 1.3 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
