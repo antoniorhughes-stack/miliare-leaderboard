@@ -13,11 +13,9 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
-// ── Admin credentials — change these to your own before deploying ─────────────
 const ADMIN_EMAIL    = "admin@miliaregroup.com";
 const ADMIN_PASSWORD = "ChangeMe123!";
 
-// ── Stat definitions — funnel order ──────────────────────────────────────────
 const STATS = [
   { key: "contacts",     label: "Contacts Made" },
   { key: "appts_set",    label: "Appts Set" },
@@ -40,8 +38,8 @@ function weekOf(d) {
 }
 function monthOf(d) { return d.slice(0, 7); }
 function yearOf(d)  { return d.slice(0, 4); }
+function titleCase(str) { return str.replace(/\b\w/g, c => c.toUpperCase()); }
 
-// ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [authUser,  setAuthUser]  = useState(undefined);
   const [profile,   setProfile]   = useState(null);
@@ -51,27 +49,18 @@ export default function App() {
   const [view,      setView]      = useState("login");
   const [loading,   setLoading]   = useState(true);
 
-  // Auth listener
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       setAuthUser(user);
       if (user) {
         const snap = await getDoc(doc(db, "users", user.uid));
-        if (snap.exists()) {
-          setProfile({ id: user.uid, ...snap.data() });
-          setView("board");
-        }
-      } else {
-        setProfile(null);
-        setIsAdmin(false);
-        setView("login");
-      }
+        if (snap.exists()) { setProfile({ id: user.uid, ...snap.data() }); setView("board"); }
+      } else { setProfile(null); setIsAdmin(false); setView("login"); }
       setLoading(false);
     });
     return unsub;
   }, []);
 
-  // Live Firestore listeners
   useEffect(() => {
     const unsubUsers = onSnapshot(collection(db, "users"), snap => {
       const map = {};
@@ -85,10 +74,9 @@ export default function App() {
     return () => { unsubUsers(); unsubEntries(); };
   }, []);
 
-  // Auth actions
   const handleRegister = async ({ email, password, first, last, phone, smd }) => {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
-    const userDoc = { first, last, email, phone, smd };
+    const userDoc = { first, last, email, phone, smd: titleCase(smd) };
     await setDoc(doc(db, "users", cred.user.uid), userDoc);
     setProfile({ id: cred.user.uid, ...userDoc });
     setView("board");
@@ -96,19 +84,14 @@ export default function App() {
 
   const handleLogin = async (email, password) => {
     if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase() && password === ADMIN_PASSWORD) {
-      setIsAdmin(true);
-      setProfile(null);
-      setLoading(false);
-      setView("admin");
-      return;
+      setIsAdmin(true); setProfile(null); setLoading(false); setView("admin"); return;
     }
     await signInWithEmailAndPassword(auth, email, password);
   };
 
   const handleLogout = async () => {
     if (isAdmin) { setIsAdmin(false); setView("login"); return; }
-    await signOut(auth);
-    setView("login");
+    await signOut(auth); setView("login");
   };
 
   const handleReport = async (statData) => {
@@ -116,18 +99,15 @@ export default function App() {
     setView("board");
   };
 
-  // Admin Firestore actions
-  const adminUpdateUser  = async (uid, data)  => { await updateDoc(doc(db, "users", uid), data); };
+  const adminUpdateUser  = async (uid, data)  => { await updateDoc(doc(db, "users", uid), { ...data, smd: titleCase(data.smd) }); };
   const adminUpdateEntry = async (eid, data)  => { await updateDoc(doc(db, "entries", eid), data); };
   const adminDeleteEntry = async (eid)        => { await deleteDoc(doc(db, "entries", eid)); };
   const adminDeleteUser  = async (uid)        => {
     await deleteDoc(doc(db, "users", uid));
-    const toDelete = entries.filter(e => e.userId === uid);
-    await Promise.all(toDelete.map(e => deleteDoc(doc(db, "entries", e.id))));
+    await Promise.all(entries.filter(e => e.userId === uid).map(e => deleteDoc(doc(db, "entries", e.id))));
   };
 
   if (loading || authUser === undefined) return <Loader />;
-
   const currentUser = isAdmin ? null : profile;
 
   return (
@@ -139,12 +119,9 @@ export default function App() {
         {view === "report"   && <ReportView   user={currentUser} entries={entries} onSave={handleReport} onBack={() => setView("board")} />}
         {view === "board"    && <BoardView    users={users} entries={entries} currentUser={currentUser} isAdmin={isAdmin} onReport={() => setView("report")} onAdmin={() => setView("admin")} />}
         {view === "admin" && isAdmin && (
-          <AdminView
-            users={users} entries={entries}
-            onUpdateUser={adminUpdateUser}
-            onUpdateEntry={adminUpdateEntry}
-            onDeleteEntry={adminDeleteEntry}
-            onDeleteUser={adminDeleteUser}
+          <AdminView users={users} entries={entries}
+            onUpdateUser={adminUpdateUser} onUpdateEntry={adminUpdateEntry}
+            onDeleteEntry={adminDeleteEntry} onDeleteUser={adminDeleteUser}
           />
         )}
       </div>
@@ -152,7 +129,6 @@ export default function App() {
   );
 }
 
-// ── Loader ────────────────────────────────────────────────────────────────────
 function Loader() {
   return (
     <div style={{ ...css.root, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
@@ -162,7 +138,6 @@ function Loader() {
   );
 }
 
-// ── Header ────────────────────────────────────────────────────────────────────
 function Header({ user, isAdmin, onNav, onLogout }) {
   return (
     <header style={css.header}>
@@ -173,18 +148,8 @@ function Header({ user, isAdmin, onNav, onLogout }) {
         </div>
         {(user || isAdmin) && (
           <div style={css.headerRight}>
-            {isAdmin ? (
-              <>
-                <span style={css.adminBadge}>Admin</span>
-                <button style={css.navBtn} onClick={() => onNav("admin")}>Admin Panel</button>
-                <button style={css.navBtn} onClick={() => onNav("board")}>Leaderboard</button>
-              </>
-            ) : (
-              <>
-                <button style={css.navBtn} onClick={() => onNav("board")}>Leaderboard</button>
-                <button style={css.navBtn} onClick={() => onNav("report")}>Log Today</button>
-              </>
-            )}
+            {isAdmin ? (<><span style={css.adminBadge}>Admin</span><button style={css.navBtn} onClick={() => onNav("admin")}>Admin Panel</button><button style={css.navBtn} onClick={() => onNav("board")}>Leaderboard</button></>)
+              : (<><button style={css.navBtn} onClick={() => onNav("board")}>Leaderboard</button><button style={css.navBtn} onClick={() => onNav("report")}>Log Today</button></>)}
             <button style={{ ...css.navBtn, color: "#64748b" }} onClick={onLogout}>Sign Out</button>
           </div>
         )}
@@ -193,7 +158,6 @@ function Header({ user, isAdmin, onNav, onLogout }) {
   );
 }
 
-// ── Login ─────────────────────────────────────────────────────────────────────
 function LoginView({ onLogin, onRegister }) {
   const [email, setEmail] = useState("");
   const [pass,  setPass]  = useState("");
@@ -220,7 +184,6 @@ function LoginView({ onLogin, onRegister }) {
   );
 }
 
-// ── Register ──────────────────────────────────────────────────────────────────
 function RegisterView({ onSave, onBack }) {
   const [f,    setF]   = useState({ first:"", last:"", email:"", phone:"", smd:"", password:"", confirm:"" });
   const [err,  setErr] = useState("");
@@ -248,7 +211,7 @@ function RegisterView({ onSave, onBack }) {
       </div>
       <Field label="Email"            value={f.email}    onChange={v => upd("email", v)}    type="email" />
       <Field label="Phone Number"     value={f.phone}    onChange={v => upd("phone", v)}    type="tel" />
-      <Field label="Upline SMD"       value={f.smd}      onChange={v => upd("smd", v)}      placeholder="e.g. Antonio Hughes" />
+      <Field label="Upline SMD"       value={f.smd}      onChange={v => upd("smd", titleCase(v))} placeholder="e.g. Antonio Hughes" />
       <Field label="Password"         value={f.password} onChange={v => upd("password", v)} type="password" />
       <Field label="Confirm Password" value={f.confirm}  onChange={v => upd("confirm", v)}  type="password" />
       <Btn onClick={submit} disabled={busy}>{busy ? "Creating account…" : "Create Account"}</Btn>
@@ -256,7 +219,6 @@ function RegisterView({ onSave, onBack }) {
   );
 }
 
-// ── Daily Report ──────────────────────────────────────────────────────────────
 function ReportView({ user, entries, onSave, onBack }) {
   const todayStr     = today();
   const alreadyFiled = entries.some(e => e.userId === user.id && e.date === todayStr);
@@ -302,11 +264,19 @@ function ReportView({ user, entries, onSave, onBack }) {
   );
 }
 
-// ── Leaderboard ───────────────────────────────────────────────────────────────
 function BoardView({ users, entries, currentUser, isAdmin, onReport, onAdmin }) {
-  const [period,  setPeriod]  = useState("Monthly");
-  const [statKey, setStatKey] = useState(DEFAULT_STAT);
+  const [period,    setPeriod]    = useState("Monthly");
+  const [statKey,   setStatKey]   = useState(DEFAULT_STAT);
+  const [smdFilter, setSmdFilter] = useState("all");
   const todayStr = today();
+
+  const smdList = useMemo(() => {
+    const smdMap = {};
+    Object.values(users).forEach(u => {
+      if (u.smd) smdMap[u.smd.toLowerCase()] = titleCase(u.smd);
+    });
+    return Object.values(smdMap).sort();
+  }, [users]);
 
   const periodKey = (date) => {
     if (period === "Daily")   return date;
@@ -323,7 +293,6 @@ function BoardView({ users, entries, currentUser, isAdmin, onReport, onAdmin }) 
       if (!map[e.userId]) map[e.userId] = Object.fromEntries(STATS.map(s => [s.key, 0]));
       for (const s of STATS) map[e.userId][s.key] += e[s.key] || 0;
     }
-// eslint-disable-next-line react-hooks/exhaustive-deps
     return map;
   }, [entries, period, currentPeriod]);
 
@@ -331,36 +300,62 @@ function BoardView({ users, entries, currentUser, isAdmin, onReport, onAdmin }) 
     Object.entries(aggregated)
       .map(([uid, totals]) => ({ uid, totals, user: users[uid] }))
       .filter(r => r.user)
+      .filter(r => smdFilter === "all" || r.user.smd?.toLowerCase() === smdFilter.toLowerCase())
       .sort((a, b) => b.totals[statKey] - a.totals[statKey]),
-  [aggregated, statKey, users]);
+  [aggregated, statKey, users, smdFilter]);
 
   const statLabel  = STATS.find(s => s.key === statKey)?.label || statKey;
   const todayFiled = currentUser && entries.some(e => e.userId === currentUser.id && e.date === todayStr);
-  const GOLD = 15;
+
+  // Gold star thresholds per stat (monthly only)
+  const GOLD_THRESHOLDS = {
+    appts_ran:    15,
+    applications: 5,
+    recruits:     2,
+  };
+
+  const dropdownStyle = {
+    padding: "9px 14px", fontSize: 13, fontWeight: 600,
+    border: "1.5px solid #e2e8f0", borderRadius: 8,
+    background: "#f8fafc", color: "#0f172a",
+    cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
+    outline: "none", width: "100%",
+  };
 
   return (
     <div style={{ padding: "0 20px" }}>
-      <div style={css.controlBar}>
-        <div>
-          <div style={css.filterLabel}>Period</div>
-          <div style={css.pills}>
-            {PERIODS.map(p => <button key={p} style={{ ...css.pill, ...(period === p ? css.pillOn : {}) }} onClick={() => setPeriod(p)}>{p}</button>)}
+      <div style={{ background: "#fff", borderRadius: 12, padding: "16px 18px", marginBottom: 20, boxShadow: "0 1px 3px rgba(0,0,0,.06)", border: "1px solid #e2e8f0" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div>
+            <label style={css.filterLabel}>Period</label>
+            <select style={dropdownStyle} value={period} onChange={e => setPeriod(e.target.value)}>
+              {PERIODS.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={css.filterLabel}>Upline SMD</label>
+            <select style={dropdownStyle} value={smdFilter} onChange={e => setSmdFilter(e.target.value)}>
+              <option value="all">All SMDs</option>
+              {smdList.map(smd => <option key={smd} value={smd}>{smd}</option>)}
+            </select>
           </div>
         </div>
-        <div>
-          <div style={css.filterLabel}>Stat</div>
-          <div style={css.pills}>
-            {STATS.map(s => <button key={s.key} style={{ ...css.pill, ...(statKey === s.key ? css.pillOn : {}) }} onClick={() => setStatKey(s.key)}>{s.label}</button>)}
-          </div>
+        <div style={{ marginTop: 10 }}>
+          <label style={css.filterLabel}>Stat</label>
+          <select style={dropdownStyle} value={statKey} onChange={e => setStatKey(e.target.value)}>
+            {STATS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+          </select>
         </div>
       </div>
 
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
         <span style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 22, fontWeight: 700 }}>{period} Rankings</span>
-        <span style={{ fontSize: 13, color: "#64748b" }}>{statLabel}</span>
+        <span style={{ fontSize: 13, color: "#64748b" }}>{statLabel}{smdFilter !== "all" ? ` · ${smdFilter}` : ""}</span>
       </div>
 
-      {statKey === "appts_ran" && period === "Monthly" && <div style={css.goldNote}>⭐ Gold star = 15+ Appts Ran this month</div>}
+      {period === "Monthly" && GOLD_THRESHOLDS[statKey] && (
+        <div style={css.goldNote}>⭐ Gold star = {GOLD_THRESHOLDS[statKey]}+ {statLabel} this month</div>
+      )}
 
       {currentUser && !todayFiled && (
         <div style={css.logPrompt}>
@@ -379,15 +374,16 @@ function BoardView({ users, entries, currentUser, isAdmin, onReport, onAdmin }) 
               <span style={{ width: 80, textAlign: "right" }}>{statLabel}</span>
             </div>
             {rows.map((row, i) => {
-              const isMe  = currentUser && row.uid === currentUser.id;
-              const gold  = period === "Monthly" && (aggregated[row.uid]?.appts_ran || 0) >= GOLD;
-              const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : null;
+              const isMe      = currentUser && row.uid === currentUser.id;
+              const threshold = GOLD_THRESHOLDS[statKey];
+              const gold      = period === "Monthly" && threshold && (aggregated[row.uid]?.[statKey] || 0) >= threshold;
+              const medal     = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : null;
               return (
                 <div key={row.uid} style={{ ...css.tableRow, ...(i === 0 ? { background: "#fffbeb" } : {}), ...(isMe ? { background: "#f0fdf4" } : {}) }}>
                   <span style={{ width: 36, fontWeight: 700, color: i < 3 ? "#0f172a" : "#94a3b8", fontSize: i < 3 ? 16 : 13 }}>{medal || `${i + 1}`}</span>
                   <span style={{ flex: 1 }}>
                     <span style={{ fontWeight: 600, fontSize: 15 }}>{row.user.first} {row.user.last}</span>
-                    {gold && <span style={{ marginLeft: 5 }}>⭐</span>}
+                    {gold && <span style={{ marginLeft: 4 }}>⭐</span>}
                     {isMe && <span style={css.meBadge}>You</span>}
                     <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>SMD: {row.user.smd}</div>
                   </span>
@@ -416,7 +412,6 @@ function BoardView({ users, entries, currentUser, isAdmin, onReport, onAdmin }) 
   );
 }
 
-// ── Admin Panel ───────────────────────────────────────────────────────────────
 function AdminView({ users, entries, onUpdateUser, onUpdateEntry, onDeleteEntry, onDeleteUser }) {
   const [tab,          setTab]          = useState("accounts");
   const [editingUser,  setEditingUser]  = useState(null);
@@ -440,7 +435,7 @@ function AdminView({ users, entries, onUpdateUser, onUpdateEntry, onDeleteEntry,
           </div>
           <Field label="Email"      value={f.email} onChange={v => upd("email", v)} type="email" />
           <Field label="Phone"      value={f.phone} onChange={v => upd("phone", v)} type="tel" />
-          <Field label="Upline SMD" value={f.smd}   onChange={v => upd("smd", v)} />
+          <Field label="Upline SMD" value={f.smd}   onChange={v => upd("smd", titleCase(v))} />
           <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
             <Btn onClick={async () => { await onUpdateUser(user.id, f); flash("Account updated."); onClose(); }} style={{ flex: 1, marginTop: 0 }}>Save Changes</Btn>
             <button onClick={onClose} style={{ ...css.cancelBtn, flex: 1 }}>Cancel</button>
@@ -468,10 +463,7 @@ function AdminView({ users, entries, onUpdateUser, onUpdateEntry, onDeleteEntry,
             ))}
           </div>
           <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-            <Btn onClick={async () => {
-              await onUpdateEntry(entry.id, { date, ...Object.fromEntries(STATS.map(s => [s.key, parseInt(vals[s.key]) || 0])) });
-              flash("Entry updated."); onClose();
-            }} style={{ flex: 1, marginTop: 0 }}>Save Changes</Btn>
+            <Btn onClick={async () => { await onUpdateEntry(entry.id, { date, ...Object.fromEntries(STATS.map(s => [s.key, parseInt(vals[s.key]) || 0])) }); flash("Entry updated."); onClose(); }} style={{ flex: 1, marginTop: 0 }}>Save Changes</Btn>
             <button onClick={onClose} style={{ ...css.cancelBtn, flex: 1 }}>Cancel</button>
           </div>
         </div>
@@ -503,8 +495,7 @@ function AdminView({ users, entries, onUpdateUser, onUpdateEntry, onDeleteEntry,
       {editingUser  && <UserEditor  user={editingUser} onClose={() => setEditingUser(null)} />}
       {editingEntry && <EntryEditor entry={editingEntry} userName={users[editingEntry.userId] ? `${users[editingEntry.userId].first} ${users[editingEntry.userId].last}` : "Unknown"} onClose={() => setEditingEntry(null)} />}
       {confirmDel && (
-        <ConfirmDialog
-          item={confirmDel}
+        <ConfirmDialog item={confirmDel}
           onConfirm={async () => {
             if (confirmDel.type === "entry") { await onDeleteEntry(confirmDel.id); flash("Entry deleted."); }
             if (confirmDel.type === "user")  { await onDeleteUser(confirmDel.id);  flash("Account deleted."); }
@@ -584,7 +575,6 @@ function AdminView({ users, entries, onUpdateUser, onUpdateEntry, onDeleteEntry,
   );
 }
 
-// ── Shared UI ─────────────────────────────────────────────────────────────────
 function Field({ label, value, onChange, type = "text", placeholder }) {
   return (
     <div style={{ marginBottom: 16 }}>
@@ -606,11 +596,9 @@ function Btn({ onClick, children, style, disabled }) {
   );
 }
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
 const css = {
   root:  { minHeight: "100vh", background: "#f8fafc", fontFamily: "'DM Sans','Helvetica Neue',sans-serif", color: "#0f172a" },
   app:   { maxWidth: 720, margin: "0 auto", paddingBottom: 48 },
-
   header:      { background: "#0f172a", padding: "0 20px", position: "sticky", top: 0, zIndex: 10, marginBottom: 32 },
   headerInner: { maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0" },
   headerBrand: { fontFamily: "'Playfair Display',Georgia,serif", fontWeight: 700, fontSize: 15, letterSpacing: "0.12em", color: "#f1f5f9" },
@@ -618,10 +606,8 @@ const css = {
   headerRight: { display: "flex", gap: 4, alignItems: "center" },
   navBtn:      { background: "transparent", border: "none", color: "#cbd5e1", fontSize: 13, cursor: "pointer", padding: "6px 10px", borderRadius: 6, fontFamily: "'DM Sans',sans-serif" },
   adminBadge:  { background: "#7c3aed", color: "#fff", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 20, letterSpacing: "0.06em" },
-
   card:      { background: "#fff", borderRadius: 16, padding: "32px 28px", margin: "0 20px", boxShadow: "0 1px 3px rgba(0,0,0,.07),0 8px 24px rgba(0,0,0,.05)", border: "1px solid #e2e8f0" },
   cardTitle: { fontFamily: "'Playfair Display',Georgia,serif", fontSize: 24, fontWeight: 700, margin: "0 0 24px" },
-
   label:      { display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6, letterSpacing: "0.04em", textTransform: "uppercase" },
   input:      { width: "100%", boxSizing: "border-box", padding: "10px 14px", fontSize: 15, border: "1.5px solid #e2e8f0", borderRadius: 8, background: "#f8fafc", color: "#0f172a", outline: "none", fontFamily: "'DM Sans',sans-serif" },
   row2:       { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
@@ -630,34 +616,24 @@ const css = {
   switchLink: { textAlign: "center", marginTop: 16, fontSize: 13, color: "#64748b" },
   link:       { color: "#0f172a", fontWeight: 600, cursor: "pointer", textDecoration: "underline" },
   backBtn:    { background: "none", border: "none", cursor: "pointer", color: "#64748b", fontSize: 13, padding: 0, marginBottom: 16, fontFamily: "'DM Sans',sans-serif" },
-
   dateTag:     { display: "inline-block", background: "#f1f5f9", borderRadius: 6, padding: "4px 10px", fontSize: 12, color: "#64748b", marginBottom: 8, fontWeight: 600 },
   reportGrid:  { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
   reportLabel: { display: "block", fontSize: 11, fontWeight: 600, color: "#475569", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.04em" },
   reportInput: { width: "100%", boxSizing: "border-box", padding: "9px 12px", fontSize: 18, fontWeight: 700, border: "1.5px solid #e2e8f0", borderRadius: 8, background: "#f8fafc", color: "#0f172a", outline: "none", fontFamily: "'DM Sans',sans-serif", textAlign: "center" },
   checkCircle: { width: 56, height: 56, borderRadius: "50%", background: "#dcfce7", color: "#16a34a", fontSize: 24, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto" },
-
-  controlBar:  { background: "#fff", borderRadius: 12, padding: "16px 18px", marginBottom: 20, boxShadow: "0 1px 3px rgba(0,0,0,.06)", border: "1px solid #e2e8f0", display: "flex", flexDirection: "column", gap: 14 },
-  filterLabel: { fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 },
-  pills:       { display: "flex", flexWrap: "wrap", gap: 6 },
-  pill:        { padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 600, border: "1.5px solid #e2e8f0", background: "#f8fafc", color: "#475569", cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
-  pillOn:      { background: "#0f172a", color: "#fff", border: "1.5px solid #0f172a" },
-
+  filterLabel: { fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6, display: "block" },
   goldNote:  { fontSize: 12, color: "#92400e", background: "#fef3c7", borderRadius: 6, padding: "5px 10px", marginBottom: 12, display: "inline-block" },
   logPrompt: { background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "10px 14px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, color: "#1e40af" },
   logBtn:    { background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
-
   table:     { background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,.06)", border: "1px solid #e2e8f0", marginBottom: 20 },
   tableHead: { display: "flex", alignItems: "center", padding: "10px 18px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase" },
   tableRow:  { display: "flex", alignItems: "center", padding: "14px 18px", borderBottom: "1px solid #f1f5f9" },
   statNum:   { width: 80, textAlign: "right", fontWeight: 800, fontSize: 20, fontVariantNumeric: "tabular-nums" },
   meBadge:   { marginLeft: 7, fontSize: 10, fontWeight: 700, background: "#dcfce7", color: "#16a34a", borderRadius: 4, padding: "1px 6px", verticalAlign: "middle" },
-
   mySummary:     { background: "#fff", borderRadius: 12, padding: 18, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,.06)" },
   summaryGrid:   { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(90px,1fr))", gap: 10 },
   summaryCell:   { background: "#f8fafc", borderRadius: 8, padding: "10px 8px", textAlign: "center", border: "1.5px solid transparent" },
   summaryCellOn: { border: "1.5px solid #0f172a", background: "#f1f5f9" },
-
   adminHeader:   { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 },
   savedBadge:    { background: "#dcfce7", color: "#16a34a", fontSize: 12, fontWeight: 700, padding: "6px 14px", borderRadius: 20 },
   tabs:          { display: "flex", gap: 4, marginBottom: 20, background: "#f1f5f9", borderRadius: 10, padding: 4 },
@@ -667,7 +643,6 @@ const css = {
   deleteIconBtn: { padding: "5px 12px", fontSize: 12, fontWeight: 600, background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: 6, cursor: "pointer", color: "#dc2626", fontFamily: "'DM Sans',sans-serif" },
   deleteBtn:     { padding: 11, background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
   cancelBtn:     { padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
-
   modal:       { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 },
   modalBox:    { background: "#fff", borderRadius: 16, padding: "28px 24px", width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" },
   modalHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 },
