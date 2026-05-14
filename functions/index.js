@@ -1,15 +1,17 @@
+// v3
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const axios = require("axios");
 
 admin.initializeApp();
 
-const SLACK_WEBHOOK = process.env.SLACK_WEBHOOK_URL;
-
+const SLACK_WEBHOOK_SECRET = defineSecret("SLACK_WEBHOOK_URL");
 
 exports.dailyLeaderboard = onSchedule(
-  { schedule: "0 22 * * *", timeZone: "America/New_York" },
+  { schedule: "0 22 * * *", timeZone: "America/New_York", secrets: ["SLACK_WEBHOOK_URL"] },
   async () => {
+    const SLACK_WEBHOOK = SLACK_WEBHOOK_SECRET.value();
     const db = admin.firestore();
 
     const now = new Date();

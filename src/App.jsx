@@ -29,7 +29,11 @@ const STATS = [
 const DEFAULT_STAT = "appts_ran";
 const PERIODS      = ["Daily", "Weekly", "Monthly", "Annual"];
 
-function today() { return new Date().toISOString().slice(0, 10); }
+function today() {
+  const d = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
+  const [m, day, y] = d.split(",")[0].split("/");
+  return `${y.trim()}-${m.padStart(2,"0")}-${day.padStart(2,"0")}`;
+}
 function weekOf(d) {
   const dt = new Date(d + "T00:00:00");
   const day = dt.getDay();
