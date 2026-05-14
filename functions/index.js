@@ -4,7 +4,8 @@ const axios = require("axios");
 
 admin.initializeApp();
 
-const SLACK_WEBHOOK = "https://hooks.slack.com/services/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";
+const SLACK_WEBHOOK = process.env.SLACK_WEBHOOK_URL;
+
 
 exports.dailyLeaderboard = onSchedule(
   { schedule: "0 22 * * *", timeZone: "America/New_York" },
